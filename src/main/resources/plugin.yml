@@ -1,0 +1,4 @@
+name: Portals Permission
+version: '1.0'
+main: org.rafalohaki.portalsPermission.PortalsPermission
+api-version: '1.21'
