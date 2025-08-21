@@ -1,4 +1,52 @@
-name: Portals Permission
+name: PortalsPermission
 version: '1.0'
 main: org.rafalohaki.portalsPermission.PortalsPermission
 api-version: '1.21'
+author: RafaloHaki
+description: Advanced portal access control plugin with permissions and knockback system
+website: https://github.com/rafalohaki
+
+commands:
+  portals:
+    description: Main command for portal management
+    usage: /portals <reload|info|cooldown|help>
+    permission: portals.admin
+    permission-message: "&cYou don't have permission to use this command!"
+
+permissions:
+  portals.nether:
+    description: Allows access to Nether portals
+    default: false
+  
+  portals.end:
+    description: Allows access to End portals
+    default: false
+  
+  portals.custom:
+    description: Allows access to custom portals
+    default: false
+  
+  portals.bypass:
+    description: Bypasses all portal restrictions
+    default: op
+  
+  portals.admin:
+    description: Access to admin commands
+    default: op
+    children:
+      portals.reload: true
+  
+  portals.reload:
+    description: Allows reloading plugin configuration
+    default: op
+  
+  portals.*:
+    description: Grants all portal permissions
+    default: op
+    children:
+      portals.nether: true
+      portals.end: true
+      portals.custom: true
+      portals.bypass: true
+      portals.admin: true
+      portals.reload: true

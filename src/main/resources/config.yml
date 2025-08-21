@@ -1,0 +1,100 @@
+# Portals Permission Plugin Configuration
+# Konfiguracja pluginu kontroli dostępu do portali
+
+# Główne ustawienia
+settings:
+  # Czy plugin jest włączony
+  enabled: true
+  
+  # Czy wyświetlać szczegółowe logi
+  debug: false
+  
+  # Language for messages (en, pl)
+  language: "en"
+
+# Ustawienia portali
+portals:
+  # Czy blokować dostęp do portali Nether
+  block_nether: true
+  
+  # Czy blokować dostęp do portali End
+  block_end: true
+  
+  # Czy blokować niestandardowe portale (inne pluginy)
+  block_custom: false
+
+# Ustawienia knockback
+knockback:
+  # Czy włączyć knockback przy próbie wejścia
+  enabled: true
+  
+  # Siła knockback (0.0 - 5.0)
+  strength: 1.5
+  
+  # Wysokość knockback (0.0 - 3.0)
+  height: 0.8
+  
+  # Czy odtwarzać dźwięk przy knockback
+  play_sound: true
+  
+  # Typ dźwięku
+  sound_type: "ENTITY_VILLAGER_NO"
+  
+  # Głośność dźwięku (0.0 - 1.0)
+  sound_volume: 0.7
+  
+  # Wysokość dźwięku (0.5 - 2.0)
+  sound_pitch: 1.0
+
+# System cooldown
+cooldown:
+  # Czy włączyć cooldown na próby wejścia
+  enabled: true
+  
+  # Czas cooldown w sekundach
+  time_seconds: 5
+  
+  # Czy pokazywać komunikat o cooldown
+  show_message: true
+
+# Messages
+messages:
+  # English messages (default)
+  en:
+    no_permission_nether: "&cYou don't have permission to use Nether portals!"
+    no_permission_end: "&cYou don't have permission to use End portals!"
+    no_permission_custom: "&cYou don't have permission to use this portal!"
+    cooldown_active: "&eYou must wait &c{time} &emore seconds before trying again!"
+    plugin_reloaded: "&aPortals Permission plugin has been reloaded!"
+    no_command_permission: "&cYou don't have permission to use this command!"
+    invalid_usage: "&cInvalid usage: {usage}"
+  
+  # Polish messages
+  pl:
+    no_permission_nether: "&cNie masz uprawnień do korzystania z portali Nether!"
+    no_permission_end: "&cNie masz uprawnień do korzystania z portali End!"
+    no_permission_custom: "&cNie masz uprawnień do korzystania z tego portalu!"
+    cooldown_active: "&eMusisz poczekać jeszcze &c{time} &esekund przed ponowną próbą!"
+    plugin_reloaded: "&aPlugin Portals Permission został przeładowany!"
+    no_command_permission: "&cNie masz uprawnień do tej komendy!"
+    invalid_usage: "&cNieprawidłowe użycie: {usage}"
+
+# Uprawnienia
+permissions:
+  # Uprawnienie do portali Nether
+  nether: "portals.nether"
+  
+  # Uprawnienie do portali End
+  end: "portals.end"
+  
+  # Uprawnienie do niestandardowych portali
+  custom: "portals.custom"
+  
+  # Uprawnienie do pominięcia wszystkich ograniczeń
+  bypass: "portals.bypass"
+  
+  # Uprawnienie do komend administracyjnych
+  admin: "portals.admin"
+  
+  # Uprawnienie do przeładowania pluginu
+  reload: "portals.reload"
