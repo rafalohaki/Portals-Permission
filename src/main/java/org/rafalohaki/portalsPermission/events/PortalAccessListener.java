@@ -201,37 +201,17 @@ public class PortalAccessListener implements Listener {
                 double strength = configManager.getKnockbackStrength();
                 double height = configManager.getKnockbackHeight();
                 
-                // Calculate knockback direction (away from portal)
+                // Determine portal type for appropriate knockback direction
+                World.Environment targetEnvironment = getTargetEnvironmentFromLocation(portalLocation);
+                
+                // Calculate knockback direction based on portal type
                 Location playerLoc = player.getLocation();
-                Vector rawDirection = playerLoc.toVector().subtract(portalLocation.toVector());
+                Vector knockback = calculateKnockbackVector(playerLoc, portalLocation, targetEnvironment, strength, height);
                 
-                // Calculate final direction vector
-                final Vector direction;
-                
-                // Check if direction vector is valid (not zero length)
-                if (rawDirection.lengthSquared() < 0.01) {
-                    // Player is at same location as portal, use default direction
-                    direction = new Vector(1.0, 0.0, 0.0);
-                } else {
-                    Vector normalizedDirection = rawDirection.normalize();
-                    
-                    // Ensure minimum horizontal knockback if player is directly above/below portal
-                    if (Math.abs(normalizedDirection.getX()) < 0.1 && Math.abs(normalizedDirection.getZ()) < 0.1) {
-                        // Create new horizontal direction vector
-                        double angle = Math.random() * 2 * Math.PI;
-                        direction = new Vector(Math.cos(angle), normalizedDirection.getY(), Math.sin(angle)).normalize();
-                    } else {
-                        direction = normalizedDirection;
-                    }
-                }
-                
-                // Validate direction components before creating knockback vector
-                if (!Double.isFinite(direction.getX()) || !Double.isFinite(direction.getY()) || !Double.isFinite(direction.getZ())) {
-                    plugin.getLogger().warning("Invalid direction vector calculated for knockback: " + direction);
+                if (knockback == null) {
+                    plugin.getLogger().warning("Failed to calculate knockback vector for player " + player.getName());
                     return;
                 }
-                
-                Vector knockback = direction.multiply(strength).setY(height);
                 
                 // Apply knockback on main thread using damage-based approach for Paper 1.21+ compatibility
                 scheduler.runTask(plugin, () -> {
@@ -264,7 +244,7 @@ public class PortalAccessListener implements Listener {
                         
                         if (configManager.isDebugMode()) {
                             plugin.getLogger().info("Applied knockback to player " + player.getName() + 
-                                " with direction: " + direction + " and strength: " + strength);
+                                " with vector: " + knockback + " and strength: " + strength);
                         }
                     } catch (Exception e) {
                         plugin.getLogger().log(Level.WARNING, "Failed to apply knockback to player " + player.getName(), e);
@@ -274,6 +254,93 @@ public class PortalAccessListener implements Listener {
                 plugin.getLogger().log(Level.WARNING, "Error calculating knockback for player " + player.getName(), e);
             }
         });
+    }
+    
+    /**
+     * Determines the target environment from portal location
+     * Określa docelowe środowisko na podstawie lokalizacji portalu
+     */
+    private World.Environment getTargetEnvironmentFromLocation(@NotNull Location portalLocation) {
+        // Check portal material at location
+        Material portalMaterial = portalLocation.getBlock().getType();
+        
+        if (portalMaterial == Material.NETHER_PORTAL) {
+            return portalLocation.getWorld().getEnvironment() == World.Environment.NORMAL ? 
+                   World.Environment.NETHER : World.Environment.NORMAL;
+        } else if (portalMaterial == Material.END_PORTAL || portalMaterial == Material.END_GATEWAY) {
+            return World.Environment.THE_END;
+        }
+        
+        // Check nearby blocks for portal detection
+        for (int x = -1; x <= 1; x++) {
+            for (int y = -1; y <= 1; y++) {
+                for (int z = -1; z <= 1; z++) {
+                    Location checkLoc = portalLocation.clone().add(x, y, z);
+                    Material material = checkLoc.getBlock().getType();
+                    
+                    if (material == Material.NETHER_PORTAL) {
+                        return portalLocation.getWorld().getEnvironment() == World.Environment.NORMAL ? 
+                               World.Environment.NETHER : World.Environment.NORMAL;
+                    } else if (material == Material.END_PORTAL || material == Material.END_GATEWAY) {
+                        return World.Environment.THE_END;
+                    }
+                }
+            }
+        }
+        
+        // Unknown portal type
+        return null;
+    }
+    
+    /**
+     * Calculates appropriate knockback vector based on portal type
+     * Oblicza odpowiedni wektor knockback na podstawie typu portalu
+     */
+    private Vector calculateKnockbackVector(@NotNull Location playerLoc, @NotNull Location portalLocation, 
+                                          World.Environment targetEnvironment, double strength, double height) {
+        Vector rawDirection = playerLoc.toVector().subtract(portalLocation.toVector());
+        
+        // Handle different portal types with appropriate knockback directions
+        if (targetEnvironment == World.Environment.THE_END) {
+            // End portals are horizontal - knockback upward and away
+            if (rawDirection.lengthSquared() < 0.01) {
+                // Player is at same location as portal, use upward direction
+                return new Vector(0.0, height * 1.5, 0.0).add(new Vector(1.0, 0.0, 0.0).multiply(strength));
+            }
+            
+            Vector normalizedDirection = rawDirection.normalize();
+            // For End portals, emphasize upward movement
+            return new Vector(normalizedDirection.getX(), 0.0, normalizedDirection.getZ())
+                    .normalize().multiply(strength).setY(height * 1.2);
+                    
+        } else if (targetEnvironment == World.Environment.NETHER || targetEnvironment == World.Environment.NORMAL) {
+            // Nether portals are vertical - knockback horizontally (sideways)
+            if (rawDirection.lengthSquared() < 0.01) {
+                // Player is at same location as portal, use random horizontal direction
+                double angle = Math.random() * 2 * Math.PI;
+                return new Vector(Math.cos(angle), 0.0, Math.sin(angle)).multiply(strength).setY(height);
+            }
+            
+            Vector normalizedDirection = rawDirection.normalize();
+            // For Nether portals, emphasize horizontal movement and reduce Y component
+            Vector horizontalDirection = new Vector(normalizedDirection.getX(), 0.0, normalizedDirection.getZ());
+            
+            if (horizontalDirection.lengthSquared() < 0.01) {
+                // Player is directly above/below portal, create horizontal direction
+                double angle = Math.random() * 2 * Math.PI;
+                horizontalDirection = new Vector(Math.cos(angle), 0.0, Math.sin(angle));
+            }
+            
+            return horizontalDirection.normalize().multiply(strength * 1.2).setY(height * 0.8);
+        }
+        
+        // Default knockback for unknown portal types
+        if (rawDirection.lengthSquared() < 0.01) {
+            return new Vector(1.0, 0.0, 0.0).multiply(strength).setY(height);
+        }
+        
+        Vector normalizedDirection = rawDirection.normalize();
+        return normalizedDirection.multiply(strength).setY(height);
     }
     
     /**
