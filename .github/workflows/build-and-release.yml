@@ -11,6 +11,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     
     steps:
     - name: Checkout code
@@ -45,6 +47,10 @@ jobs:
   release:
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/'))
     
     steps:
@@ -89,12 +95,10 @@ jobs:
         
     - name: Create Release
       id: create_release
-      uses: actions/create-release@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      uses: softprops/action-gh-release@v1
       with:
         tag_name: ${{ steps.generate_tag.outputs.tag }}
-        release_name: "Portals Permission ${{ steps.generate_tag.outputs.tag }}"
+        name: "Portals Permission ${{ steps.generate_tag.outputs.tag }}"
         body: |
           ## Portals Permission Release ${{ steps.generate_tag.outputs.tag }}
           
@@ -116,27 +120,11 @@ jobs:
           - Java 21+
         draft: false
         prerelease: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+        files: |
+          target/PortalsPermission-${{ steps.get_version.outputs.version }}.jar
+          target/PortalsPermission-${{ steps.get_version.outputs.version }}-shaded.jar
         
-    - name: Upload JAR to Release
-      uses: actions/upload-release-asset@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: target/PortalsPermission-${{ steps.get_version.outputs.version }}.jar
-        asset_name: PortalsPermission-${{ steps.get_version.outputs.tag }}.jar
-        asset_content_type: application/java-archive
-        
-    - name: Upload shaded JAR to Release (if exists)
-      uses: actions/upload-release-asset@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: target/PortalsPermission-${{ steps.get_version.outputs.version }}-shaded.jar
-        asset_name: PortalsPermission-${{ steps.get_version.outputs.tag }}-shaded.jar
-        asset_content_type: application/java-archive
-      continue-on-error: true
+
       
   notify:
     needs: [build, release]
