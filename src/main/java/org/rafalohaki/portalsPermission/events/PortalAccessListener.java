@@ -17,6 +17,8 @@ import org.bukkit.util.Vector;
 import org.jetbrains.annotations.NotNull;
 import org.rafalohaki.portalsPermission.managers.ConfigManager;
 import org.rafalohaki.portalsPermission.managers.CooldownManager;
+import org.rafalohaki.portalsPermission.managers.SoundConfig;
+import org.rafalohaki.portalsPermission.utils.PortalType;
 
 import java.util.logging.Level;
 
@@ -101,7 +103,7 @@ public class PortalAccessListener implements Listener {
             sendMessage(player, message);
             
             // Apply knockback and cooldown asynchronously
-            applyKnockbackAsync(player);
+            applyKnockbackAsync(player, event.getFrom());
             cooldownManager.setCooldownAsync(player);
             
             if (configManager.isDebugMode()) {
@@ -149,35 +151,21 @@ public class PortalAccessListener implements Listener {
     }
     
     /**
-     * Gets required permission for portal type
-     * Pobiera wymagane uprawnienie dla typu portalu
+     * Gets required permission for portal type using modern Java 21 sealed classes and pattern matching
+     * Pobiera wymagane uprawnienie dla typu portalu używając nowoczesnych sealed classes i pattern matching Java 21
      */
     private String getRequiredPermission(World.Environment environment) {
-        if (environment == null) {
-            return null;
-        }
-        
-        return switch (environment) {
-            case NETHER -> configManager.getPermission("nether");
-            case THE_END -> configManager.getPermission("end");
-            default -> null;
-        };
+        PortalType portalType = PortalType.fromEnvironment(environment);
+        return portalType != null ? configManager.getPermission(portalType.getPermissionKey()) : null;
     }
     
     /**
-     * Gets message key for portal type
-     * Pobiera klucz wiadomości dla typu portalu
+     * Gets message key for portal type using modern Java 21 sealed classes and pattern matching
+     * Pobiera klucz wiadomości dla typu portalu używając nowoczesnych sealed classes i pattern matching Java 21
      */
     private String getMessageKey(World.Environment environment) {
-        if (environment == null) {
-            return "no_permission_custom";
-        }
-        
-        return switch (environment) {
-            case NETHER -> "no_permission_nether";
-            case THE_END -> "no_permission_end";
-            default -> "no_permission_custom";
-        };
+        PortalType portalType = PortalType.fromEnvironment(environment);
+        return portalType != null ? portalType.getMessageKey() : "no_permission_custom";
     }
     
     /**
@@ -200,7 +188,11 @@ public class PortalAccessListener implements Listener {
      * Applies knockback to player asynchronously
      * Aplikuje knockback do gracza asynchronicznie
      */
-    private void applyKnockbackAsync(@NotNull Player player) {
+    /**
+     * Applies knockback to player away from portal location
+     * Stosuje knockback do gracza z dala od lokalizacji portalu
+     */
+    private void applyKnockbackAsync(@NotNull Player player, @NotNull Location portalLocation) {
         if (!configManager.isKnockbackEnabled()) {
             return;
         }
@@ -211,7 +203,35 @@ public class PortalAccessListener implements Listener {
                 double height = configManager.getKnockbackHeight();
                 
                 // Calculate knockback direction (away from portal)
-                Vector direction = player.getLocation().getDirection().multiply(-1).normalize();
+                Location playerLoc = player.getLocation();
+                Vector rawDirection = playerLoc.toVector().subtract(portalLocation.toVector());
+                
+                // Calculate final direction vector
+                final Vector direction;
+                
+                // Check if direction vector is valid (not zero length)
+                if (rawDirection.lengthSquared() < 0.01) {
+                    // Player is at same location as portal, use default direction
+                    direction = new Vector(1.0, 0.0, 0.0);
+                } else {
+                    Vector normalizedDirection = rawDirection.normalize();
+                    
+                    // Ensure minimum horizontal knockback if player is directly above/below portal
+                    if (Math.abs(normalizedDirection.getX()) < 0.1 && Math.abs(normalizedDirection.getZ()) < 0.1) {
+                        // Create new horizontal direction vector
+                        double angle = Math.random() * 2 * Math.PI;
+                        direction = new Vector(Math.cos(angle), normalizedDirection.getY(), Math.sin(angle)).normalize();
+                    } else {
+                        direction = normalizedDirection;
+                    }
+                }
+                
+                // Validate direction components before creating knockback vector
+                if (!Double.isFinite(direction.getX()) || !Double.isFinite(direction.getY()) || !Double.isFinite(direction.getZ())) {
+                    plugin.getLogger().warning("Invalid direction vector calculated for knockback: " + direction);
+                    return;
+                }
+                
                 Vector knockback = direction.multiply(strength).setY(height);
                 
                 // Apply knockback on main thread
@@ -225,7 +245,8 @@ public class PortalAccessListener implements Listener {
                         }
                         
                         if (configManager.isDebugMode()) {
-                            plugin.getLogger().info("Applied knockback to player " + player.getName());
+                            plugin.getLogger().info("Applied knockback to player " + player.getName() + 
+                                " with direction: " + direction + " and strength: " + strength);
                         }
                     } catch (Exception e) {
                         plugin.getLogger().log(Level.WARNING, "Failed to apply knockback to player " + player.getName(), e);
@@ -238,39 +259,94 @@ public class PortalAccessListener implements Listener {
     }
     
     /**
-     * Plays knockback sound to player
-     * Odtwarza dźwięk knockback dla gracza
+     * Plays knockback sound to player using Adventure Sound API
+     * Odtwarza dźwięk knockback dla gracza używając Adventure Sound API
      */
     private void playKnockbackSound(@NotNull Player player) {
         try {
-            String soundType = configManager.getKnockbackSoundType();
-            float volume = configManager.getKnockbackSoundVolume();
-            float pitch = configManager.getKnockbackSoundPitch();
+            SoundConfig soundConfig = configManager.getKnockbackSoundConfig();
+            if (!soundConfig.enabled()) {
+                return;
+            }
             
-            // Use Key.key() instead of deprecated Sound.valueOf() and Sound.key()
-            net.kyori.adventure.key.Key soundKey = net.kyori.adventure.key.Key.key("minecraft", soundType.toLowerCase());
-            Sound adventureSound = Sound.sound(soundKey, Sound.Source.PLAYER, volume, pitch);
+            // Convert legacy sound format to modern namespace format
+            String soundName = convertLegacySoundFormat(soundConfig.type());
             
-            player.playSound(adventureSound);
-        } catch (IllegalArgumentException e) {
-            plugin.getLogger().log(Level.WARNING, "Invalid sound type in configuration: " + configManager.getKnockbackSoundType(), e);
+            // Validate sound name before creating Key
+            if (soundName == null || soundName.trim().isEmpty()) {
+                plugin.getLogger().warning("Invalid sound name: " + soundConfig.type());
+                return;
+            }
+            
+            // Use Adventure Sound API with proper namespace format and error handling
+            try {
+                net.kyori.adventure.key.Key soundKey = net.kyori.adventure.key.Key.key("minecraft", soundName);
+                Sound adventureSound = Sound.sound(soundKey, Sound.Source.PLAYER, soundConfig.volume(), soundConfig.pitch());
+                
+                // Play sound at player location to avoid registry issues
+                player.playSound(adventureSound, player.getLocation().getX(), player.getLocation().getY(), player.getLocation().getZ());
+            } catch (IllegalStateException e) {
+                // Fallback to Bukkit Sound API if Adventure fails
+                plugin.getLogger().warning("Adventure Sound API failed, using Bukkit fallback: " + e.getMessage());
+                playKnockbackSoundFallback(player, soundConfig);
+            }
         } catch (Exception e) {
             plugin.getLogger().log(Level.WARNING, "Failed to play knockback sound for player " + player.getName(), e);
         }
     }
     
     /**
+     * Fallback method using Bukkit Sound API
+     * Metoda fallback używająca Bukkit Sound API
+     */
+    private void playKnockbackSoundFallback(@NotNull Player player, @NotNull SoundConfig soundConfig) {
+        try {
+            // Convert sound name to proper format for Registry lookup
+            String soundName = soundConfig.type().toLowerCase().replace("minecraft:", "");
+            
+            // Use modern Registry API to find sound
+            org.bukkit.NamespacedKey soundKey = org.bukkit.NamespacedKey.minecraft(soundName);
+            org.bukkit.Sound bukkitSound = org.bukkit.Registry.SOUNDS.get(soundKey);
+            
+            if (bukkitSound != null) {
+                player.playSound(player.getLocation(), bukkitSound, soundConfig.volume(), soundConfig.pitch());
+            } else {
+                // If Registry lookup fails, use safe default sound
+                plugin.getLogger().warning("Sound not found in registry: " + soundConfig.type() + ". Using default sound.");
+                player.playSound(player.getLocation(), org.bukkit.Sound.ENTITY_PLAYER_HURT, soundConfig.volume(), soundConfig.pitch());
+            }
+        } catch (Exception e) {
+            plugin.getLogger().warning("Error playing sound: " + soundConfig.type() + ". Using default sound. Error: " + e.getMessage());
+            // Use a safe default sound
+            player.playSound(player.getLocation(), org.bukkit.Sound.ENTITY_PLAYER_HURT, soundConfig.volume(), soundConfig.pitch());
+        }
+    }
+    
+    /**
+     * Converts legacy sound format to modern namespace format
+     * Konwertuje starszy format dźwięku na nowoczesny format namespace
+     */
+    private @NotNull String convertLegacySoundFormat(@NotNull String legacySound) {
+        // Convert ENTITY_VILLAGER_NO to entity.villager.no
+        return legacySound.toLowerCase().replace("_", ".");
+    }
+    
+    /**
      * Sends message to player using Adventure Components
      * Wysyła wiadomość do gracza używając Adventure Components
+     */
+    /**
+     * Sends a MiniMessage formatted message to the player
+     * Wysyła sformatowaną wiadomość MiniMessage do gracza
      */
     private void sendMessage(@NotNull Player player, @NotNull String message) {
         try {
             Component component = miniMessage.deserialize(message);
             player.sendMessage(component);
         } catch (Exception e) {
-            plugin.getLogger().log(Level.WARNING, "Failed to send message to player " + player.getName() + ": " + message, e);
-            // Fallback to plain text
-            player.sendMessage(message.replaceAll("&([0-9a-fk-or])", "§$1"));
+            plugin.getLogger().log(Level.WARNING, "Failed to deserialize MiniMessage for player " + player.getName() + ": " + message, e);
+            // Fallback to plain Component without formatting
+            player.sendMessage(Component.text(message));
         }
     }
 }

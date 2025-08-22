@@ -120,6 +120,19 @@ public class ConfigManager {
         return config != null ? (float) config.getDouble("knockback.sound_pitch", 1.0) : 1.0f;
     }
     
+    /**
+     * Gets sound configuration as a modern Java 21 record
+     * Pobiera konfigurację dźwięku jako nowoczesny record Java 21
+     */
+    public @NotNull SoundConfig getKnockbackSoundConfig() {
+        return new SoundConfig(
+            isKnockbackSoundEnabled(),
+            getKnockbackSoundType(),
+            getKnockbackSoundVolume(),
+            getKnockbackSoundPitch()
+        );
+    }
+    
     // Cooldown settings
     public boolean isCooldownEnabled() {
         return config != null && config.getBoolean("cooldown.enabled", true);
@@ -136,7 +149,7 @@ public class ConfigManager {
     // Messages
     public @NotNull String getMessage(@NotNull String key) {
         if (config == null) {
-            return "&cConfiguration not loaded";
+            return "<red>Configuration not loaded</red>";
         }
         
         String language = getLanguage();
@@ -149,7 +162,7 @@ public class ConfigManager {
         
         // Final fallback
         if (message == null) {
-            return "&cMessage not found: " + key;
+            return "<red>Message not found: " + key + "</red>";
         }
         
         return message;

@@ -108,26 +108,26 @@ public class PortalsCommand implements CommandExecutor, TabCompleter {
      * Obsługuje komendę info
      */
     private void handleInfoCommand(@NotNull CommandSender sender) {
-        sendMessage(sender, "&6=== Portals Permission Info ===");
-        sendMessage(sender, "&ePlugin Version: &f" + plugin.getDescription().getVersion());
-        sendMessage(sender, "&eEnabled: &f" + (configManager.isEnabled() ? "&aYes" : "&cNo"));
-        sendMessage(sender, "&eDebug Mode: &f" + (configManager.isDebugMode() ? "&aYes" : "&cNo"));
-        sendMessage(sender, "&eLanguage: &f" + configManager.getLanguage());
+        sendMessage(sender, "<gold>=== Portals Permission Info ===</gold>");
+        sendMessage(sender, "<yellow>Plugin Version: <white>" + plugin.getPluginMeta().getVersion() + "</white></yellow>");
+        sendMessage(sender, "<yellow>Enabled: <white>" + (configManager.isEnabled() ? "<green>Yes</green>" : "<red>No</red>") + "</white></yellow>");
+        sendMessage(sender, "<yellow>Debug Mode: <white>" + (configManager.isDebugMode() ? "<green>Yes</green>" : "<red>No</red>") + "</white></yellow>");
+        sendMessage(sender, "<yellow>Language: <white>" + configManager.getLanguage() + "</white></yellow>");
         sendMessage(sender, "");
-        sendMessage(sender, "&6Portal Settings:");
-        sendMessage(sender, "&eNether Blocked: &f" + (configManager.isNetherBlocked() ? "&aYes" : "&cNo"));
-        sendMessage(sender, "&eEnd Blocked: &f" + (configManager.isEndBlocked() ? "&aYes" : "&cNo"));
-        sendMessage(sender, "&eCustom Blocked: &f" + (configManager.isCustomBlocked() ? "&aYes" : "&cNo"));
+        sendMessage(sender, "<gold>Portal Settings:</gold>");
+        sendMessage(sender, "<yellow>Nether Blocked: <white>" + (configManager.isNetherBlocked() ? "<green>Yes</green>" : "<red>No</red>") + "</white></yellow>");
+        sendMessage(sender, "<yellow>End Blocked: <white>" + (configManager.isEndBlocked() ? "<green>Yes</green>" : "<red>No</red>") + "</white></yellow>");
+        sendMessage(sender, "<yellow>Custom Blocked: <white>" + (configManager.isCustomBlocked() ? "<green>Yes</green>" : "<red>No</red>") + "</white></yellow>");
         sendMessage(sender, "");
-        sendMessage(sender, "&6Knockback Settings:");
-        sendMessage(sender, "&eKnockback Enabled: &f" + (configManager.isKnockbackEnabled() ? "&aYes" : "&cNo"));
-        sendMessage(sender, "&eKnockback Strength: &f" + configManager.getKnockbackStrength());
-        sendMessage(sender, "&eKnockback Height: &f" + configManager.getKnockbackHeight());
+        sendMessage(sender, "<gold>Knockback Settings:</gold>");
+        sendMessage(sender, "<yellow>Knockback Enabled: <white>" + (configManager.isKnockbackEnabled() ? "<green>Yes</green>" : "<red>No</red>") + "</white></yellow>");
+        sendMessage(sender, "<yellow>Knockback Strength: <white>" + configManager.getKnockbackStrength() + "</white></yellow>");
+        sendMessage(sender, "<yellow>Knockback Height: <white>" + configManager.getKnockbackHeight() + "</white></yellow>");
         sendMessage(sender, "");
-        sendMessage(sender, "&6Cooldown Settings:");
-        sendMessage(sender, "&eCooldown Enabled: &f" + (configManager.isCooldownEnabled() ? "&aYes" : "&cNo"));
-        sendMessage(sender, "&eCooldown Time: &f" + configManager.getCooldownTime() + " seconds");
-        sendMessage(sender, "&eActive Cooldowns: &f" + cooldownManager.getActiveCooldownCount());
+        sendMessage(sender, "<gold>Cooldown Settings:</gold>");
+        sendMessage(sender, "<yellow>Cooldown Enabled: <white>" + (configManager.isCooldownEnabled() ? "<green>Yes</green>" : "<red>No</red>") + "</white></yellow>");
+        sendMessage(sender, "<yellow>Cooldown Time: <white>" + configManager.getCooldownTime() + " seconds</white></yellow>");
+        sendMessage(sender, "<yellow>Active Cooldowns: <white>" + cooldownManager.getActiveCooldownCount() + "</white></yellow>");
     }
     
     /**
@@ -201,17 +201,17 @@ public class PortalsCommand implements CommandExecutor, TabCompleter {
     }
     
     /**
-     * Sends message using Adventure Components
-     * Wysyła wiadomość używając Adventure Components
+     * Sends a MiniMessage formatted message to the command sender
+     * Wysyła sformatowaną wiadomość MiniMessage do nadawcy komendy
      */
     private void sendMessage(@NotNull CommandSender sender, @NotNull String message) {
         try {
             Component component = miniMessage.deserialize(message);
             sender.sendMessage(component);
         } catch (Exception e) {
-            plugin.getLogger().log(Level.WARNING, "Failed to send message to " + sender.getName() + ": " + message, e);
-            // Fallback to plain text
-            sender.sendMessage(message.replaceAll("&([0-9a-fk-or])", "§$1"));
+            plugin.getLogger().log(Level.WARNING, "Failed to deserialize MiniMessage for sender " + sender.getName() + ": " + message, e);
+            // Fallback to plain Component without formatting
+            sender.sendMessage(Component.text(message));
         }
     }
     

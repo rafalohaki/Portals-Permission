@@ -59,25 +59,25 @@ cooldown:
 
 # Messages
 messages:
-  # English messages (default)
+  # English messages (default) - Using MiniMessage format
   en:
-    no_permission_nether: "&cYou don't have permission to use Nether portals!"
-    no_permission_end: "&cYou don't have permission to use End portals!"
-    no_permission_custom: "&cYou don't have permission to use this portal!"
-    cooldown_active: "&eYou must wait &c{time} &emore seconds before trying again!"
-    plugin_reloaded: "&aPortals Permission plugin has been reloaded!"
-    no_command_permission: "&cYou don't have permission to use this command!"
-    invalid_usage: "&cInvalid usage: {usage}"
+    no_permission_nether: "<red>You don't have permission to use Nether portals!</red>"
+    no_permission_end: "<red>You don't have permission to use End portals!</red>"
+    no_permission_custom: "<red>You don't have permission to use this portal!</red>"
+    cooldown_active: "<yellow>You must wait <red>{time}</red> more seconds before trying again!</yellow>"
+    plugin_reloaded: "<green>Portals Permission plugin has been reloaded!</green>"
+    no_command_permission: "<red>You don't have permission to use this command!</red>"
+    invalid_usage: "<red>Invalid usage: {usage}</red>"
   
-  # Polish messages
+  # Polish messages - Using MiniMessage format
   pl:
-    no_permission_nether: "&cNie masz uprawnień do korzystania z portali Nether!"
-    no_permission_end: "&cNie masz uprawnień do korzystania z portali End!"
-    no_permission_custom: "&cNie masz uprawnień do korzystania z tego portalu!"
-    cooldown_active: "&eMusisz poczekać jeszcze &c{time} &esekund przed ponowną próbą!"
-    plugin_reloaded: "&aPlugin Portals Permission został przeładowany!"
-    no_command_permission: "&cNie masz uprawnień do tej komendy!"
-    invalid_usage: "&cNieprawidłowe użycie: {usage}"
+    no_permission_nether: "<red>Nie masz uprawnień do korzystania z portali Nether!</red>"
+    no_permission_end: "<red>Nie masz uprawnień do korzystania z portali End!</red>"
+    no_permission_custom: "<red>Nie masz uprawnień do korzystania z tego portalu!</red>"
+    cooldown_active: "<yellow>Musisz poczekać jeszcze <red>{time}</red> sekund przed ponowną próbą!</yellow>"
+    plugin_reloaded: "<green>Plugin Portals Permission został przeładowany!</green>"
+    no_command_permission: "<red>Nie masz uprawnień do tej komendy!</red>"
+    invalid_usage: "<red>Nieprawidłowe użycie: {usage}</red>"
 
 # Uprawnienia
 permissions:

@@ -24,7 +24,7 @@ public final class PortalsPermission extends JavaPlugin {
     @Override
     public void onEnable() {
         try {
-            getLogger().info("Starting Portals Permission v" + getDescription().getVersion());
+            getLogger().info("Starting Portals Permission v" + getPluginMeta().getVersion());
             
             // Initialize managers
             initializeManagers();
