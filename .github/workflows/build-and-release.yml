@@ -1,0 +1,156 @@
+name: Build and Release
+
+# Trigger workflow on push to main branch and on tags
+on:
+  push:
+    branches: [ main, master ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up JDK 21
+      uses: actions/setup-java@v4
+      with:
+        java-version: '21'
+        distribution: 'temurin'
+        
+    - name: Cache Maven dependencies
+      uses: actions/cache@v4
+      with:
+        path: ~/.m2
+        key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
+        restore-keys: ${{ runner.os }}-m2
+        
+    - name: Build with Maven
+      run: mvn clean compile package -DskipTests
+      
+    - name: Run tests
+      run: mvn test
+      
+    - name: Upload JAR artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: portals-permission-jar
+        path: target/*.jar
+        retention-days: 30
+        
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/'))
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up JDK 21
+      uses: actions/setup-java@v4
+      with:
+        java-version: '21'
+        distribution: 'temurin'
+        
+    - name: Cache Maven dependencies
+      uses: actions/cache@v4
+      with:
+        path: ~/.m2
+        key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
+        restore-keys: ${{ runner.os }}-m2
+        
+    - name: Build JAR
+      run: mvn clean package -DskipTests
+      
+    - name: Get version from pom.xml
+      id: get_version
+      run: |
+        VERSION=$(mvn help:evaluate -Dexpression=project.version -q -DforceStdout)
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+        echo "Version: $VERSION"
+        
+    - name: Generate release tag
+      id: generate_tag
+      run: |
+        if [[ $GITHUB_REF == refs/tags/* ]]; then
+          TAG=${GITHUB_REF#refs/tags/}
+        else
+          TIMESTAMP=$(date +"%Y%m%d-%H%M%S")
+          COMMIT_SHORT=$(echo $GITHUB_SHA | cut -c1-7)
+          TAG="v${{ steps.get_version.outputs.version }}-${TIMESTAMP}-${COMMIT_SHORT}"
+        fi
+        echo "tag=$TAG" >> $GITHUB_OUTPUT
+        echo "Generated tag: $TAG"
+        
+    - name: Create Release
+      id: create_release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ steps.generate_tag.outputs.tag }}
+        release_name: "Portals Permission ${{ steps.generate_tag.outputs.tag }}"
+        body: |
+          ## Portals Permission Release ${{ steps.generate_tag.outputs.tag }}
+          
+          **Commit:** ${{ github.sha }}
+          **Branch:** ${{ github.ref_name }}
+          **Build Date:** ${{ github.event.head_commit.timestamp }}
+          
+          ### Changes
+          ${{ github.event.head_commit.message }}
+          
+          ### Installation
+          1. Download the JAR file below
+          2. Place it in your server's `plugins` folder
+          3. Restart your server
+          4. Configure the plugin in `plugins/PortalsPermission/config.yml`
+          
+          ### Requirements
+          - Paper/Spigot 1.21.8+
+          - Java 21+
+        draft: false
+        prerelease: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+        
+    - name: Upload JAR to Release
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: target/PortalsPermission-${{ steps.get_version.outputs.version }}.jar
+        asset_name: PortalsPermission-${{ steps.get_version.outputs.tag }}.jar
+        asset_content_type: application/java-archive
+        
+    - name: Upload shaded JAR to Release (if exists)
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: target/PortalsPermission-${{ steps.get_version.outputs.version }}-shaded.jar
+        asset_name: PortalsPermission-${{ steps.get_version.outputs.tag }}-shaded.jar
+        asset_content_type: application/java-archive
+      continue-on-error: true
+      
+  notify:
+    needs: [build, release]
+    runs-on: ubuntu-latest
+    if: always()
+    
+    steps:
+    - name: Notify build status
+      run: |
+        if [[ "${{ needs.build.result }}" == "success" && "${{ needs.release.result }}" == "success" ]]; then
+          echo "✅ Build and release completed successfully!"
+        elif [[ "${{ needs.build.result }}" == "success" ]]; then
+          echo "✅ Build completed successfully, release skipped (not on main/master branch)"
+        else
+          echo "❌ Build or release failed!"
+          exit 1
+        fi
