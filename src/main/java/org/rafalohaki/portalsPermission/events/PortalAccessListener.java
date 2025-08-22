@@ -10,7 +10,10 @@ import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
+import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.player.PlayerPortalEvent;
+import org.bukkit.damage.DamageSource;
+import org.bukkit.damage.DamageType;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.scheduler.BukkitScheduler;
 import org.bukkit.util.Vector;
@@ -185,12 +188,8 @@ public class PortalAccessListener implements Listener {
     }
     
     /**
-     * Applies knockback to player asynchronously
-     * Aplikuje knockback do gracza asynchronicznie
-     */
-    /**
-     * Applies knockback to player away from portal location
-     * Stosuje knockback do gracza z dala od lokalizacji portalu
+     * Applies knockback to player using damage-based approach for Paper API 1.21+ compatibility
+     * Stosuje knockback do gracza używając podejścia opartego na damage dla kompatybilności z Paper API 1.21+
      */
     private void applyKnockbackAsync(@NotNull Player player, @NotNull Location portalLocation) {
         if (!configManager.isKnockbackEnabled()) {
@@ -234,10 +233,29 @@ public class PortalAccessListener implements Listener {
                 
                 Vector knockback = direction.multiply(strength).setY(height);
                 
-                // Apply knockback on main thread
+                // Apply knockback on main thread using damage-based approach for Paper 1.21+ compatibility
                 scheduler.runTask(plugin, () -> {
                     try {
+                        // Store original velocity for fallback
+                        Vector originalVelocity = player.getVelocity().clone();
+                        
+                        // Method 1: Try direct velocity setting (may not work in Paper 1.21+)
                         player.setVelocity(knockback);
+                        
+                        // Method 2: Fallback using minimal damage event for knockback
+                        scheduler.runTaskLater(plugin, () -> {
+                            Vector currentVelocity = player.getVelocity();
+                            
+                            // Check if velocity was applied (compare with original)
+                            if (currentVelocity.distanceSquared(originalVelocity) < 0.01) {
+                                // Velocity wasn't applied, use damage-based knockback
+                                applyDamageBasedKnockback(player, knockback);
+                                
+                                if (configManager.isDebugMode()) {
+                                    plugin.getLogger().info("Applied damage-based knockback fallback for player " + player.getName());
+                                }
+                            }
+                        }, 1L); // Check after 1 tick
                         
                         // Play sound if enabled
                         if (configManager.isKnockbackSoundEnabled()) {
@@ -256,6 +274,42 @@ public class PortalAccessListener implements Listener {
                 plugin.getLogger().log(Level.WARNING, "Error calculating knockback for player " + player.getName(), e);
             }
         });
+    }
+    
+    /**
+     * Applies knockback using minimal damage event for Paper API 1.21+ compatibility
+     * Stosuje knockback używając minimalnego zdarzenia damage dla kompatybilności z Paper API 1.21+
+     */
+    private void applyDamageBasedKnockback(@NotNull Player player, @NotNull Vector knockback) {
+        try {
+             // Create a minimal damage event that triggers knockback
+             // Use GENERIC damage type to avoid interfering with other plugins
+             DamageSource damageSource = DamageSource.builder(DamageType.GENERIC).build();
+             EntityDamageEvent damageEvent = new EntityDamageEvent(player, EntityDamageEvent.DamageCause.CUSTOM, damageSource, 0.01);
+            
+            // Call the event to trigger knockback mechanics
+            plugin.getServer().getPluginManager().callEvent(damageEvent);
+            
+            // If event wasn't cancelled, apply the knockback
+            if (!damageEvent.isCancelled()) {
+                // Cancel the actual damage but keep the knockback
+                damageEvent.setCancelled(true);
+                
+                // Apply the calculated knockback vector
+                scheduler.runTaskLater(plugin, () -> {
+                    player.setVelocity(knockback);
+                }, 1L);
+            }
+        } catch (Exception e) {
+            plugin.getLogger().log(Level.WARNING, "Failed to apply damage-based knockback to player " + player.getName(), e);
+            
+            // Final fallback: try direct velocity one more time
+            try {
+                player.setVelocity(knockback);
+            } catch (Exception fallbackException) {
+                plugin.getLogger().log(Level.SEVERE, "All knockback methods failed for player " + player.getName(), fallbackException);
+            }
+        }
     }
     
     /**
