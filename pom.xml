@@ -47,6 +47,19 @@
                 <version>3.2.5</version>
                 <configuration>
                     <useSystemClassLoader>false</useSystemClassLoader>
+                    <argLine>
+                        --add-opens java.base/java.lang=ALL-UNNAMED
+                        --add-opens java.base/java.util=ALL-UNNAMED
+                        --add-opens java.base/java.io=ALL-UNNAMED
+                        --add-opens java.base/java.net=ALL-UNNAMED
+                        --add-opens java.base/java.nio=ALL-UNNAMED
+                        --add-opens java.base/java.security=ALL-UNNAMED
+                        --add-opens java.base/java.text=ALL-UNNAMED
+                        --add-opens java.base/java.time=ALL-UNNAMED
+                        --add-opens java.base/java.util.concurrent=ALL-UNNAMED
+                        --add-opens java.base/java.util.regex=ALL-UNNAMED
+                        --add-opens java.logging/java.util.logging=ALL-UNNAMED
+                    </argLine>
                 </configuration>
             </plugin>
         </plugins>
@@ -76,19 +89,7 @@
         <!-- Test Dependencies -->
         <dependency>
             <groupId>org.junit.jupiter</groupId>
-            <artifactId>junit-jupiter-engine</artifactId>
-            <version>5.10.2</version>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>org.junit.jupiter</groupId>
-            <artifactId>junit-jupiter-api</artifactId>
-            <version>5.10.2</version>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>org.mockito</groupId>
-            <artifactId>mockito-core</artifactId>
+            <artifactId>junit-jupiter</artifactId>
             <version>5.11.0</version>
             <scope>test</scope>
         </dependency>

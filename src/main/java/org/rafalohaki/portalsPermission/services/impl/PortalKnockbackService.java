@@ -3,7 +3,6 @@ package org.rafalohaki.portalsPermission.services.impl;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.Material;
-import org.bukkit.Sound;
 import org.bukkit.World;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
@@ -14,6 +13,7 @@ import org.rafalohaki.portalsPermission.managers.ConfigManager;
 import org.rafalohaki.portalsPermission.services.IPortalKnockbackService;
 import org.rafalohaki.portalsPermission.services.ISoundService;
 
+import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 
 /**
@@ -33,39 +33,73 @@ public class PortalKnockbackService implements IPortalKnockbackService {
      * @param plugin The plugin instance
      * @param configManager The configuration manager
      * @param soundService The sound service
+     * @throws IllegalArgumentException if any parameter is null
      */
     public PortalKnockbackService(@NotNull JavaPlugin plugin, @NotNull ConfigManager configManager, @NotNull ISoundService soundService) {
-        this.plugin = plugin;
-        this.configManager = configManager;
-        this.soundService = soundService;
+        this.plugin = Objects.requireNonNull(plugin, "Plugin cannot be null");
+        this.configManager = Objects.requireNonNull(configManager, "ConfigManager cannot be null");
+        this.soundService = Objects.requireNonNull(soundService, "SoundService cannot be null");
     }
     
     @Override
     @NotNull
     public CompletableFuture<Void> applyKnockbackAsync(@NotNull Player player, @NotNull Location portalLocation) {
-        return CompletableFuture.runAsync(() -> {
-            if (!isKnockbackEnabled()) {
-                return;
+        Objects.requireNonNull(player, "Player cannot be null");
+        Objects.requireNonNull(portalLocation, "Portal location cannot be null");
+        
+        CompletableFuture<Void> future = new CompletableFuture<>();
+        
+        // Use BukkitScheduler for async operations instead of CompletableFuture.runAsync()
+        Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+            try {
+                if (!isKnockbackEnabled()) {
+                    future.complete(null);
+                    return;
+                }
+                
+                // Additional null safety checks
+                if (!player.isOnline() || player.isDead()) {
+                    future.complete(null);
+                    return;
+                }
+                
+                Location playerLocation = player.getLocation();
+                if (playerLocation == null || playerLocation.getWorld() == null) {
+                    future.complete(null);
+                    return;
+                }
+                
+                World.Environment targetEnvironment = getTargetEnvironmentFromLocation(portalLocation);
+                double strength = configManager.getKnockbackStrength();
+                double height = configManager.getKnockbackHeight();
+                
+                Vector knockback = calculateKnockbackVector(
+                    playerLocation, 
+                    portalLocation, 
+                    targetEnvironment, 
+                    strength, 
+                    height
+                );
+                
+                // Apply knockback on main thread
+                Bukkit.getScheduler().runTask(plugin, () -> {
+                    try {
+                        // Double-check player state on main thread
+                        if (player.isOnline() && !player.isDead()) {
+                            applyDamageBasedKnockback(player, knockback);
+                            playKnockbackSound(player);
+                        }
+                        future.complete(null);
+                    } catch (Exception e) {
+                        future.completeExceptionally(e);
+                    }
+                });
+            } catch (Exception e) {
+                future.completeExceptionally(e);
             }
-            
-            World.Environment targetEnvironment = getTargetEnvironmentFromLocation(portalLocation);
-            double strength = configManager.getKnockbackStrength();
-            double height = configManager.getKnockbackHeight();
-            
-            Vector knockback = calculateKnockbackVector(
-                player.getLocation(), 
-                portalLocation, 
-                targetEnvironment, 
-                strength, 
-                height
-            );
-            
-            // Apply knockback on main thread
-            Bukkit.getScheduler().runTask(plugin, () -> {
-                applyDamageBasedKnockback(player, knockback);
-                playKnockbackSound(player);
-            });
         });
+        
+        return future;
     }
     
     @Override
@@ -75,6 +109,17 @@ public class PortalKnockbackService implements IPortalKnockbackService {
                                          @Nullable World.Environment targetEnvironment, 
                                          double strength, 
                                          double height) {
+        Objects.requireNonNull(playerLocation, "Player location cannot be null");
+        Objects.requireNonNull(portalLocation, "Portal location cannot be null");
+        
+        // Validate numeric parameters
+        if (Double.isNaN(strength) || Double.isInfinite(strength)) {
+            strength = 1.0;
+        }
+        if (Double.isNaN(height) || Double.isInfinite(height)) {
+            height = 0.5;
+        }
+        
         // Calculate direction from portal center to player (push away from portal)
         Vector knockbackDirection = playerLocation.toVector().subtract(portalLocation.toVector());
         
@@ -122,6 +167,13 @@ public class PortalKnockbackService implements IPortalKnockbackService {
         return knockbackDirection;
     }
     
+    /**
+     * Gets target environment based on portal location
+     * Pobiera docelowe środowisko na podstawie lokalizacji portalu
+     * 
+     * @param portalLocation The portal location to analyze
+     * @return The target environment or null if not a portal
+     */
     @Override
     @Nullable
     public World.Environment getTargetEnvironmentFromLocation(@NotNull Location portalLocation) {
@@ -145,14 +197,33 @@ public class PortalKnockbackService implements IPortalKnockbackService {
     
     @Override
     public void applyDamageBasedKnockback(@NotNull Player player, @NotNull Vector knockback) {
-        // Modern Paper API 1.21+ compatible knockback using velocity
-        player.setVelocity(knockback);
+        Objects.requireNonNull(player, "Player cannot be null");
+        Objects.requireNonNull(knockback, "Knockback vector cannot be null");
         
-        // Alternative method for older versions or if velocity doesn't work
-        // Use a small amount of damage to trigger knockback
-        if (knockback.lengthSquared() > 0) {
-            player.damage(0.01); // Minimal damage to trigger knockback mechanics
+        // Additional safety checks
+        if (!player.isOnline() || player.isDead()) {
+            return;
+        }
+        
+        // Validate knockback vector
+        if (Double.isNaN(knockback.getX()) || Double.isNaN(knockback.getY()) || Double.isNaN(knockback.getZ()) ||
+            Double.isInfinite(knockback.getX()) || Double.isInfinite(knockback.getY()) || Double.isInfinite(knockback.getZ())) {
+            return; // Skip invalid knockback
+        }
+        
+        try {
+            // Modern Paper API 1.21+ compatible knockback using velocity
             player.setVelocity(knockback);
+            
+            // Alternative method for older versions or if velocity doesn't work
+            // Use a small amount of damage to trigger knockback
+            if (knockback.lengthSquared() > 0) {
+                player.damage(0.01); // Minimal damage to trigger knockback mechanics
+                player.setVelocity(knockback);
+            }
+        } catch (Exception e) {
+            // Log error but don't throw - knockback is not critical functionality
+            plugin.getLogger().warning("Failed to apply knockback to player " + player.getName() + ": " + e.getMessage());
         }
     }
     

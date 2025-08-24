@@ -1,7 +1,6 @@
 package org.rafalohaki.portalsPermission.services;
 
 import org.bukkit.Location;
-// import org.bukkit.Sound; // Removed to avoid NoClassDefFoundError in tests
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 

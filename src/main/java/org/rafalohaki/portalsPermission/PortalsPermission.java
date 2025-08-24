@@ -27,7 +27,7 @@ import java.util.logging.Level;
  * Main plugin class for Portals Permission
  * Główna klasa pluginu Portals Permission
  */
-public final class PortalsPermission extends JavaPlugin {
+public class PortalsPermission extends JavaPlugin {
     
     private ConfigManager configManager;
     private CooldownManager cooldownManager;
@@ -104,10 +104,14 @@ public final class PortalsPermission extends JavaPlugin {
      * Ładuje konfigurację asynchronicznie
      */
     private @NotNull CompletableFuture<Void> loadConfigurationAsync() {
+        if (configManager == null) {
+            return CompletableFuture.failedFuture(new IllegalStateException("ConfigManager not initialized"));
+        }
+        
         return configManager.loadConfigAsync().thenRun(() -> {
             getLogger().info("Configuration loaded successfully");
             
-            if (configManager.isDebugMode()) {
+            if (configManager != null && configManager.isDebugMode()) {
                 getLogger().info("Debug mode is enabled");
             }
         });
@@ -302,5 +306,26 @@ public final class PortalsPermission extends JavaPlugin {
                messageService != null &&
                soundService != null &&
                configManager.isLoaded();
+    }
+    
+    // Setters for testing purposes
+    public void setConfigManager(ConfigManager configManager) {
+        this.configManager = configManager;
+    }
+    
+    public void setPortalKnockbackService(IPortalKnockbackService knockbackService) {
+        this.knockbackService = knockbackService;
+    }
+    
+    public void setPortalMessageService(IPortalMessageService messageService) {
+        this.messageService = messageService;
+    }
+    
+    public void setPortalPermissionChecker(IPortalPermissionChecker permissionChecker) {
+        this.permissionChecker = permissionChecker;
+    }
+    
+    public void setPortalSecurityService(IPortalSecurityService portalSecurityService) {
+        this.portalSecurityService = portalSecurityService;
     }
 }

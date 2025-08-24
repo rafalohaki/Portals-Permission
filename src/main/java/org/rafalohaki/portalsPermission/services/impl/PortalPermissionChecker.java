@@ -8,7 +8,6 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.rafalohaki.portalsPermission.managers.ConfigManager;
 import org.rafalohaki.portalsPermission.services.IPortalPermissionChecker;
-import org.rafalohaki.portalsPermission.utils.PortalType;
 
 /**
  * Implementation of portal permission checking service
@@ -28,6 +27,14 @@ public class PortalPermissionChecker implements IPortalPermissionChecker {
         this.configManager = configManager;
     }
     
+    /**
+     * Checks if player has permission to use the portal
+     * Sprawdza czy gracz ma uprawnienia do użycia portalu
+     * 
+     * @param player The player to check
+     * @param event The portal event
+     * @return true if player has permission, false otherwise
+     */
     @Override
     public boolean hasPortalPermission(@NotNull Player player, @NotNull PlayerPortalEvent event) {
         if (hasBypassPermission(player)) {
@@ -45,11 +52,25 @@ public class PortalPermissionChecker implements IPortalPermissionChecker {
         return requiredPermission == null || player.hasPermission(requiredPermission);
     }
     
+    /**
+     * Checks if player has bypass permission
+     * Sprawdza czy gracz ma uprawnienia do ominięcia
+     * 
+     * @param player The player to check
+     * @return true if player has bypass permission, false otherwise
+     */
     @Override
     public boolean hasBypassPermission(@NotNull Player player) {
         return player.hasPermission("portals.bypass");
     }
     
+    /**
+     * Gets the target environment for the portal
+     * Pobiera docelowe środowisko dla portalu
+     * 
+     * @param event The portal event
+     * @return The target environment or null if unknown
+     */
     @Override
     @Nullable
     public World.Environment getTargetEnvironment(@NotNull PlayerPortalEvent event) {
@@ -93,6 +114,13 @@ public class PortalPermissionChecker implements IPortalPermissionChecker {
         }
     }
     
+    /**
+     * Gets required permission for portal type
+     * Pobiera wymagane uprawnienie dla typu portalu
+     * 
+     * @param environment The target environment
+     * @return The required permission or null if not found
+     */
     @Override
     @Nullable
     public String getRequiredPermission(@Nullable World.Environment environment) {
@@ -112,6 +140,13 @@ public class PortalPermissionChecker implements IPortalPermissionChecker {
         }
     }
     
+    /**
+     * Gets message key for portal type
+     * Pobiera klucz wiadomości dla typu portalu
+     * 
+     * @param environment The target environment
+     * @return The message key
+     */
     @Override
     @NotNull
     public String getMessageKey(@Nullable World.Environment environment) {
@@ -131,6 +166,13 @@ public class PortalPermissionChecker implements IPortalPermissionChecker {
         }
     }
     
+    /**
+     * Checks if portal type is blocked in configuration
+     * Sprawdza czy typ portalu jest zablokowany w konfiguracji
+     * 
+     * @param environment The target environment
+     * @return true if portal type is blocked, false otherwise
+     */
     @Override
     public boolean isPortalTypeBlocked(@Nullable World.Environment environment) {
         if (environment == null) {

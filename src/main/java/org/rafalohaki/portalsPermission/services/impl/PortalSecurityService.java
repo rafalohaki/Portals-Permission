@@ -17,11 +17,9 @@ import org.rafalohaki.portalsPermission.services.IPortalSecurityService;
 
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
 import java.util.UUID;
 import java.util.logging.Level;
+import org.bukkit.scheduler.BukkitTask;
 
 /**
  * Implementation of portal security service for bypass prevention
@@ -32,7 +30,7 @@ public class PortalSecurityService implements IPortalSecurityService {
     private final JavaPlugin plugin;
     private final ConfigManager configManager;
     private final BukkitScheduler scheduler;
-    private final ScheduledExecutorService asyncExecutor;
+    private BukkitTask cleanupTask;
     
     // Entity portal cooldowns (UUID -> cooldown end time in ticks)
     private final ConcurrentHashMap<UUID, Long> entityPortalCooldowns;
@@ -46,12 +44,16 @@ public class PortalSecurityService implements IPortalSecurityService {
     // Players using elytra near portals
     private final ConcurrentHashMap<UUID, Boolean> playersGlidingNearPortal;
     
+    // Throttling for debug logs to prevent spam
+    private volatile long lastDebugLogTime = 0;
+    
     // Configuration constants
     private static final int DEFAULT_ENTITY_PORTAL_COOLDOWN_TICKS = 100; // 5 seconds
     private static final long MAX_PORTAL_STAY_TIME_MS = 30000; // 30 seconds
     private static final int CLEANUP_INTERVAL_SECONDS = 60;
     private static final double MAX_MOVEMENT_SPEED_NEAR_PORTAL = 0.5; // blocks per tick
     private static final double MAX_VELOCITY_NEAR_PORTAL = 2.0; // blocks per second
+    private static final long DEBUG_LOG_THROTTLE_MS = 5000; // 5 seconds between debug logs
     
     /**
      * Constructor for PortalSecurityService
@@ -61,7 +63,6 @@ public class PortalSecurityService implements IPortalSecurityService {
         this.plugin = plugin;
         this.configManager = configManager;
         this.scheduler = plugin.getServer().getScheduler();
-        this.asyncExecutor = Executors.newScheduledThreadPool(2);
         
         this.entityPortalCooldowns = new ConcurrentHashMap<>();
         this.entityPortalEntryTimes = new ConcurrentHashMap<>();
@@ -219,7 +220,9 @@ public class PortalSecurityService implements IPortalSecurityService {
     
     @Override
     public CompletableFuture<Void> setEntityPortalCooldownAsync(@NotNull Entity entity, int cooldownTicks) {
-        return CompletableFuture.runAsync(() -> {
+        CompletableFuture<Void> future = new CompletableFuture<>();
+        
+        scheduler.runTaskAsynchronously(plugin, () -> {
             try {
                 UUID entityId = entity.getUniqueId();
                 long currentTick = plugin.getServer().getCurrentTick();
@@ -230,10 +233,15 @@ public class PortalSecurityService implements IPortalSecurityService {
                 if (configManager.isDebugMode()) {
                     plugin.getLogger().info("Set portal cooldown for entity " + entity.getType() + " (" + entityId + ") for " + cooldownTicks + " ticks");
                 }
+                
+                future.complete(null);
             } catch (Exception e) {
                 plugin.getLogger().log(Level.WARNING, "Failed to set portal cooldown for entity " + entity.getUniqueId(), e);
+                future.completeExceptionally(e);
             }
-        }, asyncExecutor);
+        });
+        
+        return future;
     }
     
     @Override
@@ -272,6 +280,12 @@ public class PortalSecurityService implements IPortalSecurityService {
         return (int) (cooldownEnd - currentTick);
     }
     
+    /**
+     * Removes portal cooldown for entity
+     * Usuwa cooldown portalu dla encji
+     * 
+     * @param entity The entity to remove cooldown for
+     */
     @Override
     public void removeEntityPortalCooldown(@NotNull Entity entity) {
         UUID entityId = entity.getUniqueId();
@@ -282,11 +296,24 @@ public class PortalSecurityService implements IPortalSecurityService {
         }
     }
     
+    /**
+     * Checks if player is in vehicle within portal area
+     * Sprawdza czy gracz jest w pojeździe w obszarze portalu
+     * 
+     * @param player The player to check
+     * @return true if player is in vehicle in portal, false otherwise
+     */
     @Override
     public boolean isPlayerInVehicleInPortal(@NotNull Player player) {
         return playersInVehicleInPortal.getOrDefault(player.getUniqueId(), false);
     }
     
+    /**
+     * Tracks entity portal entry time for security monitoring
+     * Śledzi czas wejścia encji do portalu dla monitorowania bezpieczeństwa
+     * 
+     * @param entity The entity to track
+     */
     @Override
     public void trackEntityPortalEntry(@NotNull Entity entity) {
         UUID entityId = entity.getUniqueId();
@@ -294,18 +321,27 @@ public class PortalSecurityService implements IPortalSecurityService {
         
         entityPortalEntryTimes.put(entityId, currentTime);
         
-        if (configManager.isDebugMode()) {
+        if (configManager.isDebugMode() && (currentTime - lastDebugLogTime) > DEBUG_LOG_THROTTLE_MS) {
             plugin.getLogger().info("Tracking portal entry for entity " + entity.getType() + " (" + entityId + ")");
+            lastDebugLogTime = currentTime;
         }
     }
     
+    /**
+     * Removes entity portal tracking
+     * Usuwa śledzenie encji w portalu
+     * 
+     * @param entity The entity to stop tracking
+     */
     @Override
     public void removeEntityPortalTracking(@NotNull Entity entity) {
         UUID entityId = entity.getUniqueId();
         entityPortalEntryTimes.remove(entityId);
         
-        if (configManager.isDebugMode()) {
+        long currentTime = System.currentTimeMillis();
+        if (configManager.isDebugMode() && (currentTime - lastDebugLogTime) > DEBUG_LOG_THROTTLE_MS) {
             plugin.getLogger().info("Removed portal tracking for entity " + entity.getType() + " (" + entityId + ")");
+            lastDebugLogTime = currentTime;
         }
     }
     
@@ -404,18 +440,15 @@ public class PortalSecurityService implements IPortalSecurityService {
     @Override
     public void shutdown() {
         try {
-            asyncExecutor.shutdown();
-            if (!asyncExecutor.awaitTermination(5, TimeUnit.SECONDS)) {
-                asyncExecutor.shutdownNow();
+            if (cleanupTask != null && !cleanupTask.isCancelled()) {
+                cleanupTask.cancel();
             }
             
             clearAllSecurityData();
             
             plugin.getLogger().info("PortalSecurityService shut down successfully");
-        } catch (InterruptedException e) {
-            asyncExecutor.shutdownNow();
-            Thread.currentThread().interrupt();
-            plugin.getLogger().log(Level.WARNING, "PortalSecurityService shutdown interrupted", e);
+        } catch (Exception e) {
+            plugin.getLogger().log(Level.WARNING, "Error during PortalSecurityService shutdown", e);
         }
     }
     
@@ -468,14 +501,14 @@ public class PortalSecurityService implements IPortalSecurityService {
      * Uruchamia okresowe zadania czyszczenia wygasłych danych
      */
     private void startCleanupTasks() {
-        asyncExecutor.scheduleAtFixedRate(() -> {
+        cleanupTask = scheduler.runTaskTimerAsynchronously(plugin, () -> {
             try {
                 cleanupExpiredCooldowns();
                 cleanupExpiredPortalEntries();
             } catch (Exception e) {
                 plugin.getLogger().log(Level.WARNING, "Error during portal security cleanup", e);
             }
-        }, CLEANUP_INTERVAL_SECONDS, CLEANUP_INTERVAL_SECONDS, TimeUnit.SECONDS);
+        }, CLEANUP_INTERVAL_SECONDS * 20L, CLEANUP_INTERVAL_SECONDS * 20L); // Convert seconds to ticks
     }
     
     /**
@@ -495,7 +528,8 @@ public class PortalSecurityService implements IPortalSecurityService {
             }
         }
         
-        if (configManager.isDebugMode() && removedCount > 0) {
+        // Only log if significant cleanup occurred (throttled logging)
+        if (configManager.isDebugMode() && removedCount >= 5) {
             plugin.getLogger().info("Cleaned up " + removedCount + " expired portal cooldowns");
         }
     }
@@ -520,7 +554,8 @@ public class PortalSecurityService implements IPortalSecurityService {
             }
         }
         
-        if (configManager.isDebugMode() && removedCount > 0) {
+        // Only log if significant cleanup occurred (throttled logging)
+        if (configManager.isDebugMode() && removedCount >= 5) {
             plugin.getLogger().info("Cleaned up " + removedCount + " expired portal entry trackings");
         }
     }

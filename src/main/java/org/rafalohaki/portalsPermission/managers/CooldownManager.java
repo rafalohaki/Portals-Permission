@@ -6,11 +6,9 @@ import org.jetbrains.annotations.NotNull;
 
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
 import java.util.UUID;
 import java.util.logging.Level;
+import org.bukkit.scheduler.BukkitTask;
 
 /**
  * Manager for handling player cooldowns with async operations
@@ -21,13 +19,12 @@ public class CooldownManager {
     private final JavaPlugin plugin;
     private final ConfigManager configManager;
     private final ConcurrentHashMap<UUID, Long> cooldowns;
-    private final ScheduledExecutorService scheduler;
+    private BukkitTask cleanupTask;
     
     public CooldownManager(@NotNull JavaPlugin plugin, @NotNull ConfigManager configManager) {
         this.plugin = plugin;
         this.configManager = configManager;
         this.cooldowns = new ConcurrentHashMap<>();
-        this.scheduler = Executors.newScheduledThreadPool(2);
         
         // Start cleanup task
         startCleanupTask();
@@ -88,12 +85,16 @@ public class CooldownManager {
      * Ustawia cooldown dla gracza asynchronicznie
      */
     public CompletableFuture<Void> setCooldownAsync(@NotNull Player player) {
-        return CompletableFuture.runAsync(() -> {
-            if (!configManager.isCooldownEnabled()) {
-                return;
-            }
-            
+        CompletableFuture<Void> future = new CompletableFuture<>();
+        
+        // Use BukkitScheduler for async operations
+        plugin.getServer().getScheduler().runTaskAsynchronously(plugin, () -> {
             try {
+                if (!configManager.isCooldownEnabled()) {
+                    future.complete(null);
+                    return;
+                }
+                
                 UUID playerId = player.getUniqueId();
                 int cooldownSeconds = configManager.getCooldownTime();
                 long cooldownEnd = System.currentTimeMillis() + (cooldownSeconds * 1000L);
@@ -103,10 +104,15 @@ public class CooldownManager {
                 if (configManager.isDebugMode()) {
                     plugin.getLogger().info("Set cooldown for player " + player.getName() + " for " + cooldownSeconds + " seconds");
                 }
+                
+                future.complete(null);
             } catch (Exception e) {
                 plugin.getLogger().log(Level.WARNING, "Failed to set cooldown for player " + player.getName(), e);
+                future.completeExceptionally(e);
             }
         });
+        
+        return future;
     }
     
     /**
@@ -147,25 +153,30 @@ public class CooldownManager {
      * Uruchamia okresowe zadanie czyszczenia wygasłych cooldown
      */
     private void startCleanupTask() {
-        scheduler.scheduleAtFixedRate(() -> {
+        // Use BukkitScheduler for repeating task - runs every 30 seconds (600 ticks)
+        cleanupTask = plugin.getServer().getScheduler().runTaskTimerAsynchronously(plugin, () -> {
             try {
                 long currentTime = System.currentTimeMillis();
-                int removedCount = 0;
+                
+                // Use AtomicInteger to count removed entries in lambda
+                java.util.concurrent.atomic.AtomicInteger removedCount = new java.util.concurrent.atomic.AtomicInteger(0);
                 
                 cooldowns.entrySet().removeIf(entry -> {
                     if (currentTime >= entry.getValue()) {
+                        removedCount.incrementAndGet();
                         return true;
                     }
                     return false;
                 });
                 
-                if (configManager.isDebugMode() && removedCount > 0) {
-                    plugin.getLogger().info("Cleaned up " + removedCount + " expired cooldowns");
+                // Only log if significant cleanup occurred (throttled logging)
+                if (configManager.isDebugMode() && removedCount.get() >= 5) {
+                    plugin.getLogger().info("Cleaned up " + removedCount.get() + " expired cooldowns");
                 }
             } catch (Exception e) {
                 plugin.getLogger().log(Level.WARNING, "Error during cooldown cleanup", e);
             }
-        }, 30, 30, TimeUnit.SECONDS); // Cleanup every 30 seconds
+        }, 600L, 600L); // 30 seconds = 600 ticks
     }
     
     /**
@@ -174,17 +185,14 @@ public class CooldownManager {
      */
     public void shutdown() {
         try {
-            scheduler.shutdown();
-            if (!scheduler.awaitTermination(5, TimeUnit.SECONDS)) {
-                scheduler.shutdownNow();
+            if (cleanupTask != null && !cleanupTask.isCancelled()) {
+                cleanupTask.cancel();
             }
             cooldowns.clear();
             
             plugin.getLogger().info("CooldownManager shut down successfully");
-        } catch (InterruptedException e) {
-            scheduler.shutdownNow();
-            Thread.currentThread().interrupt();
-            plugin.getLogger().log(Level.WARNING, "CooldownManager shutdown interrupted", e);
+        } catch (Exception e) {
+            plugin.getLogger().log(Level.WARNING, "Error during CooldownManager shutdown", e);
         }
     }
 }

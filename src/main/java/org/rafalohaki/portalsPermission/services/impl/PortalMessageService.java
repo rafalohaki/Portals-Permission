@@ -8,6 +8,9 @@ import org.jetbrains.annotations.NotNull;
 import org.rafalohaki.portalsPermission.managers.ConfigManager;
 import org.rafalohaki.portalsPermission.services.IPortalMessageService;
 
+import java.util.Objects;
+import java.util.logging.Logger;
+
 /**
  * Implementation of portal message service using Adventure Components
  * Implementacja serwisu wiadomości portali używając Adventure Components
@@ -15,6 +18,7 @@ import org.rafalohaki.portalsPermission.services.IPortalMessageService;
 public class PortalMessageService implements IPortalMessageService {
     
     private final ConfigManager configManager;
+    private static final Logger LOGGER = Logger.getLogger(PortalMessageService.class.getName());
     
     /**
      * Constructor for PortalMessageService
@@ -23,11 +27,25 @@ public class PortalMessageService implements IPortalMessageService {
      * @param configManager The configuration manager
      */
     public PortalMessageService(@NotNull ConfigManager configManager) {
-        this.configManager = configManager;
+        this.configManager = Objects.requireNonNull(configManager, "ConfigManager cannot be null");
     }
     
+    /**
+     * Sends a message to player using Adventure Components
+     * Wysyła wiadomość do gracza używając Adventure Components
+     * 
+     * @param player The player to send message to
+     * @param message The message to send
+     */
     @Override
     public void sendMessage(@NotNull Player player, @NotNull String message) {
+        Objects.requireNonNull(player, "Player cannot be null");
+        Objects.requireNonNull(message, "Message cannot be null");
+        
+        if (!player.isOnline()) {
+            return; // Skip sending message to offline player
+        }
+        
         if (message.isEmpty()) {
             return;
         }
@@ -37,8 +55,21 @@ public class PortalMessageService implements IPortalMessageService {
         player.sendMessage(component);
     }
     
+    /**
+     * Sends a cooldown message to player
+     * Wysyła wiadomość o cooldownie do gracza
+     * 
+     * @param player The player to send message to
+     * @param remainingTime The remaining cooldown time in seconds
+     */
     @Override
     public void sendCooldownMessage(@NotNull Player player, int remainingTime) {
+        Objects.requireNonNull(player, "Player cannot be null");
+        
+        if (!player.isOnline()) {
+            return; // Skip sending message to offline player
+        }
+        
         if (!isCooldownMessageEnabled()) {
             return;
         }
@@ -54,8 +85,22 @@ public class PortalMessageService implements IPortalMessageService {
         player.sendMessage(component);
     }
     
+    /**
+     * Sends a permission denied message to player
+     * Wysyła wiadomość o braku uprawnień do gracza
+     * 
+     * @param player The player to send message to
+     * @param messageKey The message key from configuration
+     */
     @Override
     public void sendPermissionDeniedMessage(@NotNull Player player, @NotNull String messageKey) {
+        Objects.requireNonNull(player, "Player cannot be null");
+        Objects.requireNonNull(messageKey, "Message key cannot be null");
+        
+        if (!player.isOnline()) {
+            return; // Skip sending message to offline player
+        }
+        
         String message = configManager.getMessage(messageKey);
         
         Component component = Component.text()
@@ -68,6 +113,12 @@ public class PortalMessageService implements IPortalMessageService {
         player.sendMessage(component);
     }
     
+    /**
+     * Checks if cooldown messages are enabled
+     * Sprawdza czy wiadomości o cooldownie są włączone
+     * 
+     * @return true if cooldown messages are enabled, false otherwise
+     */
     @Override
     public boolean isCooldownMessageEnabled() {
         return configManager.isCooldownMessageEnabled();
@@ -81,6 +132,12 @@ public class PortalMessageService implements IPortalMessageService {
      * @return The parsed Adventure Component
      */
     private @NotNull Component parseMessage(@NotNull String message) {
+        Objects.requireNonNull(message, "Message cannot be null");
+        
+        if (message.isEmpty()) {
+            return Component.empty();
+        }
+        
         // Replace legacy color codes with Adventure Components
         String parsed = message
             .replace("&0", "<black>")
@@ -109,8 +166,17 @@ public class PortalMessageService implements IPortalMessageService {
         try {
             // Use MiniMessage format for modern Adventure Components
             return net.kyori.adventure.text.minimessage.MiniMessage.miniMessage().deserialize(parsed);
+        } catch (net.kyori.adventure.text.minimessage.ParsingException e) {
+            // Log parsing error and fallback to plain text
+            LOGGER.warning("Failed to parse MiniMessage format: " + e.getMessage() + ", original: " + message);
+            return Component.text(message, NamedTextColor.WHITE);
+        } catch (IllegalArgumentException e) {
+            // Handle invalid arguments in message parsing
+            LOGGER.warning("Invalid message format: " + e.getMessage() + ", original: " + message);
+            return Component.text(message, NamedTextColor.WHITE);
         } catch (Exception e) {
-            // Fallback to plain text if parsing fails
+            // Unexpected error fallback
+            LOGGER.severe("Unexpected error parsing message: " + e.getMessage() + ", original: " + message);
             return Component.text(message, NamedTextColor.WHITE);
         }
     }

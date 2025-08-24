@@ -5,6 +5,7 @@ import org.bukkit.plugin.java.JavaPlugin;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.logging.Level;
 
@@ -19,7 +20,7 @@ public class ConfigManager {
     private boolean debugMode;
     
     public ConfigManager(@NotNull JavaPlugin plugin) {
-        this.plugin = plugin;
+        this.plugin = Objects.requireNonNull(plugin, "Plugin cannot be null");
     }
     
     /**
@@ -75,7 +76,11 @@ public class ConfigManager {
     }
     
     public @NotNull String getLanguage() {
-        return config != null ? config.getString("settings.language", "en") : "en";
+        if (config == null) {
+            return "en";
+        }
+        String language = config.getString("settings.language", "en");
+        return language != null ? language : "en";
     }
     
     // Portal settings
@@ -109,7 +114,11 @@ public class ConfigManager {
     }
     
     public @NotNull String getKnockbackSoundType() {
-        return config != null ? config.getString("knockback.sound_type", "ENTITY_VILLAGER_NO") : "ENTITY_VILLAGER_NO";
+        if (config == null) {
+            return "ENTITY_VILLAGER_NO";
+        }
+        String soundType = config.getString("knockback.sound_type", "ENTITY_VILLAGER_NO");
+        return soundType != null ? soundType : "ENTITY_VILLAGER_NO";
     }
     
     public float getKnockbackSoundVolume() {
@@ -148,6 +157,7 @@ public class ConfigManager {
     
     // Messages
     public @NotNull String getMessage(@NotNull String key) {
+        Objects.requireNonNull(key, "Message key cannot be null");
         if (config == null) {
             return "<red>Configuration not loaded</red>";
         }
@@ -174,10 +184,12 @@ public class ConfigManager {
     
     // Permissions
     public @NotNull String getPermission(@NotNull String key) {
+        Objects.requireNonNull(key, "Permission key cannot be null");
         if (config == null) {
             return "portals." + key;
         }
-        return config.getString("permissions." + key, "portals." + key);
+        String permission = config.getString("permissions." + key, "portals." + key);
+        return permission != null ? permission : "portals." + key;
     }
     
     /**
