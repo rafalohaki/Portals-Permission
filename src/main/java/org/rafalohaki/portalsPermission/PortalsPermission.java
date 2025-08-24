@@ -3,9 +3,22 @@ package org.rafalohaki.portalsPermission;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.jetbrains.annotations.NotNull;
 import org.rafalohaki.portalsPermission.commands.PortalsCommand;
-import org.rafalohaki.portalsPermission.events.PortalAccessListener;
+import org.rafalohaki.portalsPermission.events.EntityPortalSecurityListener;
+import org.rafalohaki.portalsPermission.events.PlayerMovementSecurityListener;
+import org.rafalohaki.portalsPermission.events.VehicleSecurityListener;
+import org.rafalohaki.portalsPermission.listeners.RefactoredPortalAccessListener;
 import org.rafalohaki.portalsPermission.managers.ConfigManager;
 import org.rafalohaki.portalsPermission.managers.CooldownManager;
+import org.rafalohaki.portalsPermission.services.IPortalKnockbackService;
+import org.rafalohaki.portalsPermission.services.IPortalMessageService;
+import org.rafalohaki.portalsPermission.services.IPortalPermissionChecker;
+import org.rafalohaki.portalsPermission.services.IPortalSecurityService;
+import org.rafalohaki.portalsPermission.services.ISoundService;
+import org.rafalohaki.portalsPermission.services.impl.SoundService;
+import org.rafalohaki.portalsPermission.services.impl.PortalSecurityService;
+import org.rafalohaki.portalsPermission.services.impl.PortalPermissionChecker;
+import org.rafalohaki.portalsPermission.services.impl.PortalKnockbackService;
+import org.rafalohaki.portalsPermission.services.impl.PortalMessageService;
 
 import java.util.concurrent.CompletableFuture;
 import java.util.logging.Level;
@@ -18,7 +31,15 @@ public final class PortalsPermission extends JavaPlugin {
     
     private ConfigManager configManager;
     private CooldownManager cooldownManager;
-    private PortalAccessListener portalListener;
+    private IPortalSecurityService portalSecurityService;
+    private IPortalPermissionChecker permissionChecker;
+    private IPortalKnockbackService knockbackService;
+    private IPortalMessageService messageService;
+    private ISoundService soundService;
+    private RefactoredPortalAccessListener refactoredPortalListener;
+    private EntityPortalSecurityListener entityPortalSecurityListener;
+    private VehicleSecurityListener vehicleSecurityListener;
+    private PlayerMovementSecurityListener playerMovementSecurityListener;
     private PortalsCommand portalsCommand;
     
     @Override
@@ -60,14 +81,22 @@ public final class PortalsPermission extends JavaPlugin {
     }
     
     /**
-     * Initializes all managers
-     * Inicjalizuje wszystkie menedżery
+     * Initializes all managers and services
+     * Inicjalizuje wszystkie menedżery i serwisy
      */
     private void initializeManagers() {
+        // Initialize managers first
         this.configManager = new ConfigManager(this);
         this.cooldownManager = new CooldownManager(this, configManager);
         
-        getLogger().info("Managers initialized successfully");
+        // Initialize services with dependency injection
+        this.permissionChecker = new PortalPermissionChecker(configManager);
+        this.soundService = new SoundService();
+        this.knockbackService = new PortalKnockbackService(this, configManager, soundService);
+        this.messageService = new PortalMessageService(configManager);
+        this.portalSecurityService = new PortalSecurityService(this, configManager);
+        
+        getLogger().info("Managers and services initialized successfully");
     }
     
     /**
@@ -113,10 +142,28 @@ public final class PortalsPermission extends JavaPlugin {
      * Rejestruje listenery wydarzeń
      */
     private void registerEventListeners() {
-        this.portalListener = new PortalAccessListener(this, configManager, cooldownManager);
-        getServer().getPluginManager().registerEvents(portalListener, this);
+        // Register refactored portal access listener with SOLID principles
+        this.refactoredPortalListener = new RefactoredPortalAccessListener(
+            this,
+            configManager,
+            cooldownManager,
+            permissionChecker, 
+            knockbackService, 
+            messageService
+        );
+        getServer().getPluginManager().registerEvents(refactoredPortalListener, this);
         
-        getLogger().info("Event listeners registered");
+        // Register security listeners for bypass prevention
+        this.entityPortalSecurityListener = new EntityPortalSecurityListener(this, portalSecurityService);
+        getServer().getPluginManager().registerEvents(entityPortalSecurityListener, this);
+        
+        this.vehicleSecurityListener = new VehicleSecurityListener(this, portalSecurityService);
+        getServer().getPluginManager().registerEvents(vehicleSecurityListener, this);
+        
+        this.playerMovementSecurityListener = new PlayerMovementSecurityListener(this, portalSecurityService);
+        getServer().getPluginManager().registerEvents(playerMovementSecurityListener, this);
+        
+        getLogger().info("Event listeners registered (including security listeners)");
     }
     
     /**
@@ -155,10 +202,14 @@ public final class PortalsPermission extends JavaPlugin {
     }
     
     /**
-     * Shuts down all managers
-     * Wyłącza wszystkie menedżery
+     * Shuts down all managers and services
+     * Wyłącza wszystkie menedżery i serwisy
      */
     private void shutdownManagers() {
+        if (portalSecurityService != null) {
+            portalSecurityService.shutdown();
+        }
+        
         if (cooldownManager != null) {
             cooldownManager.shutdown();
         }
@@ -166,7 +217,9 @@ public final class PortalsPermission extends JavaPlugin {
         // Clear references
         this.configManager = null;
         this.cooldownManager = null;
-        this.portalListener = null;
+        this.portalSecurityService = null;
+        this.entityPortalSecurityListener = null;
+        this.vehicleSecurityListener = null;
         this.portalsCommand = null;
     }
     
@@ -193,12 +246,61 @@ public final class PortalsPermission extends JavaPlugin {
     }
     
     /**
+     * Gets the portal security service
+     * Pobiera serwis zabezpieczeń portali
+     */
+    public @NotNull IPortalSecurityService getPortalSecurityService() {
+        if (portalSecurityService == null) {
+            throw new IllegalStateException("PortalSecurityService not initialized");
+        }
+        return portalSecurityService;
+    }
+    
+    /**
+     * Gets the portal permission checker service
+     * Pobiera serwis sprawdzania uprawnień portali
+     */
+    public @NotNull IPortalPermissionChecker getPermissionChecker() {
+        if (permissionChecker == null) {
+            throw new IllegalStateException("PermissionChecker not initialized");
+        }
+        return permissionChecker;
+    }
+    
+    /**
+     * Gets the portal knockback service
+     * Pobiera serwis knockbacku portali
+     */
+    public @NotNull IPortalKnockbackService getKnockbackService() {
+        if (knockbackService == null) {
+            throw new IllegalStateException("KnockbackService not initialized");
+        }
+        return knockbackService;
+    }
+    
+    /**
+     * Gets the portal message service
+     * Pobiera serwis wiadomości portali
+     */
+    public @NotNull IPortalMessageService getMessageService() {
+        if (messageService == null) {
+            throw new IllegalStateException("MessageService not initialized");
+        }
+        return messageService;
+    }
+    
+    /**
      * Checks if plugin is properly initialized
      * Sprawdza czy plugin jest poprawnie zainicjalizowany
      */
     public boolean isInitialized() {
         return configManager != null && 
                cooldownManager != null && 
+               portalSecurityService != null &&
+               permissionChecker != null &&
+               knockbackService != null &&
+               messageService != null &&
+               soundService != null &&
                configManager.isLoaded();
     }
 }
